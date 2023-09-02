@@ -1,13 +1,13 @@
 ESPHome Multi-Sensor with Auto-Light
 ====================================
 
-### [ESPHome](https://esphome.io/) Multi-Sensor for use in conjunction with [Home Assistant](https://www.home-assistant.io/) - with the added functionally of controlling automatic lights ###
+### [ESPHome](https://esphome.io/) Multi-Sensor for use in conjunction with [Home Assistant](https://www.home-assistant.io/) - with the added functionally of controlling automatic lights. ###
 
 This is another take on having a device to control the automatic lights in rooms.
 
 Change the $device_name, friendly_name and $ha_light substitutions before compiling.
 
-Note: To calibrate the 'Ambient Light' calculations, shine bright light on the LDR, click the button 'Light Sensor Update', then cover the LDR and click again.
+Note: To calibrate the 'Ambient Light' calculations, shine a bright light on the LDR, click the button 'Light Sensor Update', then cover the LDR and click again.
 
 You will also need to add two Automations to Home Assistant. These two automations will work with any number of devices.
 
