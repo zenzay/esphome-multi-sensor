@@ -5,7 +5,7 @@ ESPHome Multi-Sensor with Auto-Light
 
 This is another take on having a device to control the automatic lights in rooms.
 
-Change the $device_name and $ha_light substitutions before compiling.
+Change the $device_name, friendly_name and $ha_light substitutions before compiling.
 
 Note: To calibrate the 'Ambient Light' calculations, shine bright light on the LDR, click the button 'Light Sensor Update', then cover the LDR and click again.
 
