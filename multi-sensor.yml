@@ -1,0 +1,467 @@
+substitutions:
+  device_name: kitchen-sensor     # Device name
+  ha_light: "kitchen_light"       # The Home Assistant light entity to control (can be a group)
+  delay_pir_off: "1000ms"         # pir sensor delay off
+  delay_motion_off: "4000ms"      # motion sensor delay off
+  delay_fixed_sec: "5"            # pir + motion sensor delay
+  delay_loop_sec: "1"             # delay in auto_light_timeout script loop
+  delay_default_sec: "60"         # default auto-light duration
+  light_level_max_jump: "3"       # max percentage light level is allowed to jump
+  light_level_max_missed: "5"     # max missed light level updates caused by too large jumps in level (only up)
+  light_sensor_max_read: "1.0"    # max reading light sensor is (should be) able to deliver
+  al_auto_abort: "-1"             # abort auto-light status code
+  al_auto_idle: "0"               # idle auto-light status code
+  al_auto_start: "1"              # start auto-light status code
+  al_auto_auto: "2"               # auto-light automatically started status code
+  timeout_warn_count: "4"         # start dimming sensor light down at this timeout count
+  timeout_dim_factor: "0.225"     # factor to calculate step-wise brightness of led. (90 / timeout_warn_count / 100)
+  init_ambient_threshold: "4"     # the initial threshold to use
+  init_autolight_mode: "auto"     # initial auto-light mode
+
+esphome:
+  name: $device_name
+  comment: "Multi-Sensor with Automatic Lights"
+  project:
+    name: zenzay.multi_sensor
+    version: "0.8.9"
+
+esp8266:
+  board: d1_mini
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+logger:
+
+globals:
+  - id: light_level_max   # the highest light level ever registered
+    type: float
+    restore_value: yes
+    initial_value: '-1'
+  - id: light_level_min   # the lowest light level ever registered
+    type: float
+    restore_value: yes
+    initial_value: '101'
+  - id: timeout_count     # auto-light timeout in seconds (approximate). tried using millis(), but that made it crash after 12-14 iterations?, and this is precise enough
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: auto_status       # auto-light status. 0 = idle/finished/a_ok, 1 = start user triggered, 2 = start auto triggered, -1 = abort
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+api:
+
+ota:
+  password: !secret ota_kitchen_sensor
+
+i2c:
+  sda: GPIO4
+  scl: GPIO5
+  scan: True
+
+output:
+  - platform: gpio
+    pin: GPIO13
+    id: auto_light_led_out
+
+text_sensor:
+  - platform: homeassistant
+    id: ha_light
+    entity_id: "light.${ha_light}"
+    on_value:
+      then:
+        lambda: |-
+          if (x == "on") {
+            if (id(auto_light_ready).state) {
+              id(auto_light_ready).publish_state(false);
+            }
+          } else if (x == "off") {
+            if (id(auto_status) > $al_auto_idle) {
+              id(auto_light_abort).press();
+            } else if (!(id(auto_light_ready).state)) {
+              id(is_auto_light_ready).execute();
+            }
+          }
+
+light:
+  - platform: binary
+    name: "${device_name} Auto-Light"
+    id: auto_light_led
+    output: auto_light_led_out
+    on_turn_on:
+      - lambda: |-
+          if (id(sensor_light_auto).state) {
+            id(sensor_light_set)->execute(0,2,1);
+          }
+          id(auto_status) += 1;
+          if (id(auto_status) == $al_auto_start) {
+            id(timeout_count) =  id(auto_light_duration).state;
+            id(auto_light_timeout).execute();
+          }
+          id(auto_light_ready).publish_state(false);
+      - if:
+          condition:
+            switch.is_off: auto_light_events_disabled
+          then:
+            - homeassistant.event:
+                event: esphome.auto_light
+                data:
+                  entity_id: "light.${ha_light}"
+                  state: 'on'
+    on_turn_off:
+      - if:
+          condition:
+            lambda: return (( id(auto_status) > $al_auto_idle ) && (!(id(auto_light_events_disabled).state)));
+          then:
+            - homeassistant.event:
+                event: esphome.auto_light
+                data:
+                  entity_id: "light.${ha_light}"
+                  state: 'off'
+      - lambda: |-
+          id(auto_status) = $al_auto_idle;
+          if (id(sensor_light_auto).state) {
+            id(sensor_light_set)->execute(0,2,0);
+          }
+          if (!(id(auto_light_ready).state)) {
+            id(is_auto_light_ready).execute();
+          }
+
+  - platform: neopixelbus
+    variant: WS2812
+    pin: GPIO3
+    num_leds: 3
+    type: GRB
+    name: "${device_name} Sensor Light"
+    id: sensor_light
+    default_transition_length: 0.1s
+    color_correct: [50%, 50%, 50%]
+    restore_mode: ALWAYS_OFF
+    effects:
+      - pulse:
+          update_interval: 2s
+      - strobe:
+          colors:
+            - state: true
+              brightness: 100%
+              red: 100%
+              green: 90%
+              blue: 0%
+              duration: 500ms
+            - state: false
+              duration: 500ms
+      - addressable_scan:
+          move_interval: 500ms
+          scan_width: 1
+      - addressable_fireworks:
+          update_interval: 100ms
+          spark_probability: 25%
+          use_random_color: True
+          fade_out_rate: 120
+
+select:
+  - platform: template
+    name: "${device_name} Auto-Light Mode"
+    id: auto_light_mode
+    optimistic: true
+    options:
+      - "on"
+      - "off"
+      - "auto"
+    initial_option: $init_autolight_mode
+    on_value:
+      then:
+        lambda: id(is_auto_light_ready).execute();
+
+button:
+  - platform: template
+    name: "${device_name} Auto-Light Abort"
+    id: auto_light_abort
+    on_press:
+      lambda: |-
+        if (id(auto_status) > 0) {
+          id(auto_status) = $al_auto_abort;
+          auto call = id(auto_light_led).turn_off();
+          call.perform();
+        }
+        if (id(motion_sensor).state) {
+          id(motion_sensor).publish_state(false);
+        }
+
+  - platform: template
+    name: "${device_name} Light Sensor Update"
+    entity_category: "config"
+    on_press:
+      lambda: |-
+        id(light_sensor_value).update();
+
+number:
+  - platform: template
+    name: "${device_name} Ambient Light Threshold"
+    id: ambient_light_threshold
+    min_value: 0
+    max_value: 100
+    step: 1
+    optimistic: true
+    initial_value: $init_ambient_threshold
+    mode: box
+    unit_of_measurement: "%"
+    restore_value: no
+    on_value:
+      script.execute: is_auto_light_ready
+
+  - platform: template
+    name: "${device_name} Auto-Light Duration"
+    id: auto_light_duration
+    min_value: $delay_fixed_sec
+    max_value: 300
+    step: 1
+    optimistic: true
+    initial_value: $delay_default_sec
+    mode: box
+    unit_of_measurement: "s"
+    restore_value: no
+
+switch:
+  - platform: template
+    name: "${device_name} Motion Sensor Disabled"
+    id: motion_sensor_disabled
+    entity_category: "config"
+    turn_on_action:
+      lambda: |-
+        id(motion_sensor_disabled).publish_state(true);
+        id(motion_sensor).publish_state(false);
+    turn_off_action:
+      lambda: |-
+        id(motion_sensor_disabled).publish_state(false);
+        id(motion_sensor).publish_state(id(pir_sensor).state);
+
+  - platform: template
+    name: "${device_name} Auto-Light Events Disabled"
+    id: auto_light_events_disabled
+    entity_category: "config"
+    turn_on_action:
+      lambda: |-
+        id(auto_light_events_disabled).publish_state(true);
+    turn_off_action:
+      lambda: |-
+        id(auto_light_events_disabled).publish_state(false);
+
+  - platform: template
+    name: "${device_name} Automatic Sensor Light"
+    id: sensor_light_auto
+    turn_on_action:
+      lambda: |-
+        id(sensor_light_auto).publish_state(true);
+        if (id(auto_status) > 0) {
+          id(sensor_light_set)->execute(0,2,1);
+        }
+    turn_off_action:
+      lambda: |-
+        id(sensor_light_auto).publish_state(false);
+        if (id(auto_status) > 0) {
+          id(sensor_light_set)->execute(0,2,0);
+        }
+
+binary_sensor:
+  - platform: gpio
+    id: pir_sensor
+    #name: "${device_name} PIR Sensor"
+    device_class: motion
+    pin:
+      number: GPIO16
+      inverted: False
+      mode: INPUT_PULLDOWN
+    filters:
+      delayed_off: $delay_pir_off
+    on_state:
+      lambda: |-
+        if (!(id(motion_sensor_disabled).state)) {
+          id(motion_sensor).publish_state(x);
+        }
+
+  - platform: template
+    name: "${device_name} Motion Sensor"
+    id: motion_sensor
+    device_class: motion
+    filters:
+      delayed_off: $delay_motion_off
+    on_press:
+      lambda: |-
+        if (id(auto_status) <= 0) {
+          if (!(id(auto_light_ready).state)) {
+            id(is_auto_light_ready).execute();
+          }
+          if (id(auto_light_ready).state) {
+            id(auto_status) = $al_auto_start;
+            auto call = id(auto_light_led).turn_on();
+            call.perform();
+          }
+        }
+    on_release:
+      lambda: |-
+        if (id(auto_status) > 0) {
+          id(timeout_count) = id(auto_light_duration).state - $delay_fixed_sec;
+          id(auto_light_timeout).execute();
+        }
+
+  - platform: template
+    name: "${device_name} Auto-Light Ready"
+    id: auto_light_ready
+    icon: mdi:refresh-auto
+
+sensor:
+#  - platform: wifi_signal # Reports the WiFi signal strength/RSSI in dB
+#    name: "WiFi Signal dB"
+#    id: wifi_signal_db
+#    update_interval: 60s
+#    entity_category: "diagnostic"
+
+#  - platform: copy # Reports the WiFi signal strength in %
+#    source_id: wifi_signal_db
+#    name: "WiFi Signal Percent"
+#    filters:
+#      - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+#    unit_of_measurement: "Signal %"
+#    entity_category: "diagnostic"
+
+  - platform: bme280
+    address: 0x76
+    iir_filter: 4x
+    update_interval: 60s
+    temperature:
+      id: temperature_raw
+      name: "${device_name} Temperature Raw"
+      entity_category: "diagnostic"
+      on_value:
+        lambda: |-
+          id(temperature).publish_state(x);
+    pressure:
+      id: pressure
+      name: "${device_name} Pressure"
+    humidity:
+      id: humidity
+      name: "${device_name} Humidity"
+
+  - platform: template
+    id: temperature
+    update_interval: never
+    unit_of_measurement: "°C"
+    device_class: "temperature"
+    name: "${device_name} Temperature"
+    filters:
+    - calibrate_linear:
+      - 0.0 -> 0.0
+      - 11.2 -> 8.9
+      - 19.9 -> 17.4
+
+  - platform: adc
+    id: light_sensor_value
+    #name: "${device_name} Light Sensor Value"
+    #entity_category: "diagnostic"
+    update_interval: 300s
+    pin: A0
+    on_value:
+      lambda: |-
+        id(light_sensor_level).publish_state(x / $light_sensor_max_read * 100);
+
+  - platform: template
+    id: light_sensor_level
+    name: "${device_name} Light Level"
+    unit_of_measurement: "%"
+    icon: mdi:brightness-percent
+    entity_category: "diagnostic"
+    update_interval: never
+    on_value:
+      lambda: |-
+        bool b = false;
+        static float last_pct_t = -1;
+        static int count_missed_t = 0;
+
+        if (id(auto_status) <= 0) {
+          b = (last_pct_t < 0);
+          if (!(b)) {
+            b = (count_missed_t > $light_level_max_missed);
+            if (!(b)) {
+              b = ( ( x - last_pct_t) < $light_level_max_jump);
+            }
+          }
+          if (b) {
+            last_pct_t = x;
+            count_missed_t = 0;
+            id(ambient_light).publish_state(x);
+            id(is_auto_light_ready).execute();
+          } else {
+            count_missed_t += 1;
+          }
+        }
+
+  - platform: template
+    id: ambient_light
+    name: "${device_name} Ambient Light"
+    unit_of_measurement: "%"
+    icon: mdi:brightness-7
+    update_interval: never
+
+
+script:
+  - id: is_auto_light_ready
+    mode: single
+    then:
+      - lambda: |-
+          bool b = false;
+          b = (id(ha_light).state == "off");
+          if (b) {
+            b = (id(auto_light_mode).state == "on");
+            if (!(b)) {
+              b = (id(auto_light_mode).state == "auto");
+              if (b) {
+                b = (id(ambient_light).state < id(ambient_light_threshold).state);
+              }
+            }
+          }
+          id(auto_light_ready).publish_state(b);
+
+  - id: auto_light_timeout
+    mode: restart
+    then:
+      - while:
+          condition:
+            lambda: |-
+              return (id(timeout_count) > 0);
+          then:
+            - delay: 1s
+            - lambda: |-
+                if ( (id(motion_sensor).state) || (id(auto_status) <= 0) ) {
+                  id(timeout_count) = $al_auto_abort;
+                } else {
+                  if (id(timeout_count) <= $timeout_warn_count) {
+                    if (id(sensor_light_auto).state) {
+                      id(sensor_light_set)->execute(0,2, id(timeout_count) * $timeout_dim_factor);
+                    }
+                  }
+                  id(timeout_count) -= 1;
+                }
+
+      - lambda: |-
+          if (id(timeout_count) == 0) {
+            auto call = id(auto_light_led).turn_off();
+            call.perform();
+          }
+
+  - id: sensor_light_set
+    parameters:
+      to_idx: int
+      from_idx: int
+      bri: float
+    then:
+      light.addressable_set:
+        id: sensor_light
+        range_from: !lambda return to_idx;
+        range_to: !lambda return from_idx;
+        red: !lambda return bri;
+        green: !lambda return bri;
+        blue: !lambda return bri;
