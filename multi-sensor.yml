@@ -1,5 +1,5 @@
 substitutions:
-  device_name: kitchen-sensor     # Device name
+  device_name: multi-sensor     # Device name
   ha_light: "kitchen_light"       # The Home Assistant light entity to control (can be a group)
   delay_pir_off: "1000ms"         # pir sensor delay off
   delay_motion_off: "4000ms"      # motion sensor delay off
