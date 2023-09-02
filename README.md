@@ -12,7 +12,7 @@ Note: To calibrate the 'Ambient Light' calculations, shine bright light on the L
 ## Device Sensors, Controls and Configuration ##
 ![Sensors](./assets/images/sensors.png)
 ![Controls](./assets/images/controls.png)
-![Configuration](./assets/images/config.png)
+![Configuration](./assets/images/configuration.png)
 
 Components
 -----------
