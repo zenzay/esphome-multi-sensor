@@ -1,5 +1,6 @@
 substitutions:
-  device_name: multi-sensor     # Device name
+  device_name: multi-sensor       # Device name
+  friendly_name: "Multi Sensor"   # Friendly name
   ha_light: "kitchen_light"       # The Home Assistant light entity to control (can be a group)
   delay_pir_off: "1000ms"         # pir sensor delay off
   delay_motion_off: "4000ms"      # motion sensor delay off
@@ -20,10 +21,11 @@ substitutions:
 
 esphome:
   name: $device_name
+  friendly_name: $friendly_name
   comment: "Multi-Sensor with Automatic Lights"
   project:
     name: zenzay.multi_sensor
-    version: "0.8.9"
+    version: "0.9.0"
 
 esp8266:
   board: d1_mini
@@ -55,7 +57,7 @@ globals:
 api:
 
 ota:
-  password: !secret ota_kitchen_sensor
+  password: !secret ota_multi_sensor
 
 i2c:
   sda: GPIO4
@@ -88,7 +90,7 @@ text_sensor:
 
 light:
   - platform: binary
-    name: "${device_name} Auto-Light"
+    name: "Auto-Light"
     id: auto_light_led
     output: auto_light_led_out
     on_turn_on:
@@ -135,7 +137,7 @@ light:
     pin: GPIO3
     num_leds: 3
     type: GRB
-    name: "${device_name} Sensor Light"
+    name: "Sensor Light"
     id: sensor_light
     default_transition_length: 0.1s
     color_correct: [50%, 50%, 50%]
@@ -164,7 +166,7 @@ light:
 
 select:
   - platform: template
-    name: "${device_name} Auto-Light Mode"
+    name: "Auto-Light Mode"
     id: auto_light_mode
     optimistic: true
     options:
@@ -178,7 +180,7 @@ select:
 
 button:
   - platform: template
-    name: "${device_name} Auto-Light Abort"
+    name: "Auto-Light Abort"
     id: auto_light_abort
     on_press:
       lambda: |-
@@ -192,7 +194,7 @@ button:
         }
 
   - platform: template
-    name: "${device_name} Light Sensor Update"
+    name: "Light Sensor Update"
     entity_category: "config"
     on_press:
       lambda: |-
@@ -200,7 +202,7 @@ button:
 
 number:
   - platform: template
-    name: "${device_name} Ambient Light Threshold"
+    name: "Ambient Light Threshold"
     id: ambient_light_threshold
     min_value: 0
     max_value: 100
@@ -214,7 +216,7 @@ number:
       script.execute: is_auto_light_ready
 
   - platform: template
-    name: "${device_name} Auto-Light Duration"
+    name: "Auto-Light Duration"
     id: auto_light_duration
     min_value: $delay_fixed_sec
     max_value: 300
@@ -227,7 +229,7 @@ number:
 
 switch:
   - platform: template
-    name: "${device_name} Motion Sensor Disabled"
+    name: "Motion Sensor Disabled"
     id: motion_sensor_disabled
     entity_category: "config"
     turn_on_action:
@@ -240,7 +242,7 @@ switch:
         id(motion_sensor).publish_state(id(pir_sensor).state);
 
   - platform: template
-    name: "${device_name} Auto-Light Events Disabled"
+    name: "Auto-Light Events Disabled"
     id: auto_light_events_disabled
     entity_category: "config"
     turn_on_action:
@@ -251,7 +253,7 @@ switch:
         id(auto_light_events_disabled).publish_state(false);
 
   - platform: template
-    name: "${device_name} Automatic Sensor Light"
+    name: "Automatic Sensor Light"
     id: sensor_light_auto
     turn_on_action:
       lambda: |-
@@ -269,7 +271,7 @@ switch:
 binary_sensor:
   - platform: gpio
     id: pir_sensor
-    #name: "${device_name} PIR Sensor"
+    #name: "PIR Sensor"
     device_class: motion
     pin:
       number: GPIO16
@@ -284,7 +286,7 @@ binary_sensor:
         }
 
   - platform: template
-    name: "${device_name} Motion Sensor"
+    name: "Motion Sensor"
     id: motion_sensor
     device_class: motion
     filters:
@@ -309,7 +311,7 @@ binary_sensor:
         }
 
   - platform: template
-    name: "${device_name} Auto-Light Ready"
+    name: "Auto-Light Ready"
     id: auto_light_ready
     icon: mdi:refresh-auto
 
@@ -333,34 +335,23 @@ sensor:
     iir_filter: 4x
     update_interval: 60s
     temperature:
-      id: temperature_raw
-      name: "${device_name} Temperature Raw"
-      entity_category: "diagnostic"
-      on_value:
-        lambda: |-
-          id(temperature).publish_state(x);
+      id: temperature
+      name: "Temperature"
+      filters:
+      - calibrate_linear:
+        - 0.0 -> 0.0
+        - 11.2 -> 8.9
+        - 19.9 -> 17.4
     pressure:
       id: pressure
-      name: "${device_name} Pressure"
+      name: "Pressure"
     humidity:
       id: humidity
-      name: "${device_name} Humidity"
-
-  - platform: template
-    id: temperature
-    update_interval: never
-    unit_of_measurement: "°C"
-    device_class: "temperature"
-    name: "${device_name} Temperature"
-    filters:
-    - calibrate_linear:
-      - 0.0 -> 0.0
-      - 11.2 -> 8.9
-      - 19.9 -> 17.4
+      name: "Humidity"
 
   - platform: adc
     id: light_sensor_value
-    #name: "${device_name} Light Sensor Value"
+    #name: "Light Sensor Value"
     #entity_category: "diagnostic"
     update_interval: 300s
     pin: A0
@@ -370,10 +361,10 @@ sensor:
 
   - platform: template
     id: light_sensor_level
-    name: "${device_name} Light Level"
+    #name: "Light Level"
+    #entity_category: "diagnostic"
     unit_of_measurement: "%"
     icon: mdi:brightness-percent
-    entity_category: "diagnostic"
     update_interval: never
     on_value:
       lambda: |-
@@ -401,7 +392,7 @@ sensor:
 
   - platform: template
     id: ambient_light
-    name: "${device_name} Ambient Light"
+    name: "Ambient Light"
     unit_of_measurement: "%"
     icon: mdi:brightness-7
     update_interval: never
