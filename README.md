@@ -1,5 +1,5 @@
-ESPHome Multi-Sensor with Auto-Light
-====================================
+ESPHome Multi-Sensor with Auto-Light control
+============================================
 
 ### [ESPHome](https://esphome.io/) Multi-Sensor for use in conjunction with [Home Assistant](https://www.home-assistant.io/) - with the added functionally of controlling automatic lights. ###
 
