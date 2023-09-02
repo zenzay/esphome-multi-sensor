@@ -23,11 +23,13 @@ Components
 * PIR Sensor (I'm using a Panasonic for reliability)
 * Short 3-led RGB strip (WS2812b)
 
-I have shoved it all inside a cheap black plastic box, as you can see from the pictures above.
+I have shoved it all inside a cheap black plastic box.
 
+Here's a picture taken from above, where you can see the little plastic window for the LDR.
 ![top](./assets/images/box-top.jpg)
-![bottom](./assets/images/box-bottom.jpg)
 
+And here's one from below where you can see the bme280 sitting outside the box.
+![bottom](./assets/images/box-bottom.jpg)
 
 
 Wiring
